@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Moods — tests</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  body { padding: 34px var(--gut); font-family: var(--mono); font-size: 13px; }
+  h1 { font-family: var(--sans); font-size: 22px; margin-bottom: 20px; }
+  .grp { margin: 20px 0 8px; color: var(--mid); font-size: 11px;
+         letter-spacing: .2em; text-transform: uppercase; }
+  .t { padding: 2px 0; }
+  .ok   { color: var(--mid); }
+  .bad  { color: #fff; background: #3a1f1f; padding: 3px 7px; border-radius: 4px; }
+  .ok::before  { content: '✓  '; color: var(--paper); }
+  .bad::before { content: '✗  '; }
+  #sum { margin: 0 0 22px; padding: 14px 18px; border-radius: 10px;
+         font-size: 15px; display: inline-block; font-family: var(--sans); }
+  .pass { background: var(--paper); color: var(--ink); }
+  .fail { background: #3a1f1f; color: #fff; }
+</style>
+</head>
+<body>
+<h1>Moods — logic tests</h1>
+<div id="sum"></div>
+<div id="out"></div>
+
+<script type="module">
+import * as L from './js/lib.js';
+
+const out = document.getElementById('out');
+let pass = 0, fail = 0;
+
+const group = n => { const d = document.createElement('div'); d.className = 'grp'; d.textContent = n; out.appendChild(d); };
+function ok(label, cond, got) {
+  const d = document.createElement('div');
+  d.className = 't ' + (cond ? 'ok' : 'bad');
+  d.textContent = label + (cond ? '' : `   — got ${JSON.stringify(got)}`);
+  out.appendChild(d);
+  cond ? pass++ : fail++;
+}
+const eq = (label, a, b) => ok(label, JSON.stringify(a) === JSON.stringify(b), a);
+
+/* ---------------------------------------------------------------------- */
+group('room codes');
+const c = L.roomCode();
+ok('four characters', c.length === 4, c);
+ok('only unambiguous letters/digits', /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/.test(c), c);
+ok('no I, O, 0 or 1', !/[IO01]/.test(L.roomCode() + L.roomCode() + L.roomCode()), '');
+
+group('reading what was pasted');
+eq('youtube watch url', L.parseInput('https://www.youtube.com/watch?v=dQw4w9WgXcQ').ref, 'dQw4w9WgXcQ');
+eq('youtu.be short link', L.parseInput('https://youtu.be/dQw4w9WgXcQ').ref, 'dQw4w9WgXcQ');
+eq('youtube shorts', L.parseInput('https://youtube.com/shorts/dQw4w9WgXcQ').ref, 'dQw4w9WgXcQ');
+eq('extra query params', L.parseInput('https://www.youtube.com/watch?list=x&v=dQw4w9WgXcQ&t=9').ref, 'dQw4w9WgXcQ');
+eq('youtube normalises to a canonical url',
+   L.parseInput('https://youtu.be/dQw4w9WgXcQ').url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+eq('spotify track', L.parseInput('https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT').ref, '4cOdK2wGLETKBW3PvgPWqT');
+eq('spotify with locale', L.parseInput('https://open.spotify.com/intl-de/track/4cOdK2wGLETKBW3PvgPWqT').ref, '4cOdK2wGLETKBW3PvgPWqT');
+eq('spotify uri', L.parseInput('spotify:track:4cOdK2wGLETKBW3PvgPWqT').ref, '4cOdK2wGLETKBW3PvgPWqT');
+eq('soundcloud', L.parseInput('https://soundcloud.com/artist/some-track').platform, 'soundcloud');
+eq('any other link', L.parseInput('https://example.com/song.mp3').platform, 'link');
+eq('plain text is a search', L.parseInput('weird fishes radiohead').kind, 'search');
+eq('empty input', L.parseInput('   ').kind, 'empty');
+eq('absurdly long input', L.parseInput('a'.repeat(700)).kind, 'toolong');
+
+group('titles');
+eq('splits "Artist - Song"', L.splitTitle('Daft Punk - Around the World', ''), ['Around the World', 'Daft Punk']);
+eq('handles en dash', L.splitTitle('Boards of Canada – Roygbiv', ''), ['Roygbiv', 'Boards of Canada']);
+eq('keeps a known artist', L.splitTitle('Roygbiv', 'Boards of Canada'), ['Roygbiv', 'Boards of Canada']);
+eq('leaves a plain title alone', L.splitTitle('Windowlicker', ''), ['Windowlicker', '']);
+eq('names are trimmed and capped at 18', L.cleanName('   a really quite long name here  '), 'a really quite lon');
+eq('blank name gets a stand-in', L.cleanName('  '), 'someone');
+
+group('scoring');
+const t = (votes, ts = 0, id = 'x') => ({ id, ts, votes, ref: id });
+eq('sums votes', L.score(t({ a: 1, b: 1, c: -1 })), 1);
+eq('no votes is zero', L.score(t({})), 0);
+eq('counts up and down separately', L.tally(t({ a: 1, b: 1, c: -1 })), { up: 2, down: 1 });
+
+group('one vote per person');
+eq('a fresh upvote sticks', L.nextVote(0, 1), 1);
+eq('tapping the same arrow takes it back', L.nextVote(1, 1), null);
+eq('tapping the other arrow switches', L.nextVote(1, -1), -1);
+eq('down then down again clears', L.nextVote(-1, -1), null);
+eq('a zero clears', L.nextVote(1, 0), null);
+
+group('queue order');
+const A = t({ a: 1 }, 100, 'A'), B = t({ a: 1, b: 1 }, 200, 'B'), C = t({ a: 1 }, 50, 'C');
+eq('highest score first', L.sortQueue([A, B, C]).map(x => x.id), ['B', 'C', 'A']);
+eq('a tie goes to whoever asked first', L.sortQueue([A, C]).map(x => x.id), ['C', 'A']);
+const D = t({ a: -1, b: -1 }, 10, 'D');
+eq('buried tracks sink', L.sortQueue([A, D]).map(x => x.id), ['A', 'D']);
+eq('sorting does not mutate the input', [A, B, C].map(x => x.id), ['A', 'B', 'C']);
+
+group('reading a room');
+const raw = {
+  code: 'AB12', playing: true, hostUid: 'h1', createdAt: 1000,
+  now: { id: 'n', ref: 'n', ts: 1, title: 'On the deck', addedByUid: 'me', votes: { me: 1 } },
+  queue: {
+    q1: { id: 'q1', ref: 'r1', ts: 5, title: 'One', addedByUid: 'me',  votes: { me: 1, x: 1 } },
+    q2: { id: 'q2', ref: 'r2', ts: 6, title: 'Two', addedByUid: 'you', votes: { you: 1 } },
+  },
+  presence: { me: 1, you: 1, third: 1 },
+};
+const r = L.readRoom(raw, 'me');
+eq('queue is sorted', r.queue.map(x => x.id), ['q1', 'q2']);
+eq('scores computed', r.queue.map(x => x.score), [2, 1]);
+eq('my own vote is marked', r.queue[0].myVote, 1);
+eq('someone else’s is not', r.queue[1].myVote, 0);
+eq('knows which are mine', r.queue.map(x => x.mine), [true, false]);
+eq('now playing is decorated', r.now.score, 1);
+eq('counts listeners', r.listeners, 3);
+eq('an empty room is safe to read', L.readRoom(null, 'me').queue, []);
+eq('a room with no queue is safe', L.readRoom({ code: 'X' }, 'me').queue, []);
+
+group('no duplicates');
+eq('spots one already queued', L.findExisting(r, 'r2').track.id, 'q2');
+eq('spots the one on the deck', L.findExisting(r, 'n').where, 'now');
+eq('lets a new one through', L.findExisting(r, 'nope'), null);
+
+group('rooms expire');
+ok('a fresh room is live', !L.isExpired({ createdAt: Date.now() }));
+ok('a day-old room is done', L.isExpired({ createdAt: Date.now() - 25 * 3600e3 }));
+ok('no timestamp means live', !L.isExpired({}));
+
+/* ---------------------------------------------------------------------- */
+const sum = document.getElementById('sum');
+sum.className = fail ? 'fail' : 'pass';
+sum.textContent = fail ? `${fail} of ${pass + fail} failed` : `all ${pass} passed`;
+document.title = sum.textContent + ' — Moods tests';
+</script>
+</body>
+</html>

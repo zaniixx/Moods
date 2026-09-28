@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Moods — a shared listening room</title>
+<meta name="description" content="Open a room, let people scan in and queue songs. Most upvotes plays next.">
+<link rel="icon" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  body { display: grid; place-items: center; min-height: 100dvh; padding: 30px var(--gut); }
+
+  /* big record drifting behind everything */
+  .backdrop {
+    position: fixed; right: -20vmin; bottom: -26vmin;
+    width: 72vmin; height: 72vmin; z-index: -1;
+    opacity: .5; pointer-events: none;
+  }
+  .backdrop .vinyl { animation-play-state: running; animation-duration: 9s; }
+  @media (max-width: 720px) { .backdrop { opacity: .3; right: -34vmin; } }
+
+  main { width: 100%; max-width: 440px; }
+
+  .hero { margin: 40px 0 34px; }
+  .hero h1 {
+    font-size: clamp(38px, 10vw, 58px); font-weight: 700;
+    letter-spacing: -.045em; line-height: .98;
+  }
+  .hero h1 em { font-style: normal; color: var(--dim); }
+  .hero p { color: var(--mid); margin-top: 16px; font-size: 16px; max-width: 34ch; }
+
+  .cta { display: grid; gap: 14px; }
+
+  .or {
+    display: flex; align-items: center; gap: 14px;
+    color: var(--dim); font-size: 11px; letter-spacing: .2em;
+    text-transform: uppercase; margin: 26px 0 18px;
+  }
+  .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--ink-3); }
+
+  .join { display: flex; gap: 9px; }
+  .join input {
+    font-size: 19px;
+    font-family: var(--mono); text-transform: uppercase;
+    letter-spacing: .34em; font-size: 19px; text-align: center; padding: 13px 10px;
+  }
+  .join input::placeholder { letter-spacing: .34em; }
+
+  .how {
+    margin-top: 46px; display: grid; gap: 13px;
+    font-size: 13px; color: var(--dim); line-height: 1.5;
+  }
+  .how div { display: flex; gap: 13px; }
+  .how b {
+    font-family: var(--mono); font-weight: 400; color: var(--line);
+    flex: 0 0 auto; font-size: 12px; padding-top: 1px;
+  }
+</style>
+</head>
+<body>
+
+<div class="backdrop deck" aria-hidden="true">
+  <div class="platter"></div>
+  <div class="vinyl"></div>
+  <div class="sheen"></div>
+</div>
+
+<main class="stagger">
+  <a class="wordmark" href="./"><span class="dot"></span> Moods</a>
+
+  <div class="hero">
+    <h1>One room.<br>One queue.<br><em>Everyone votes.</em></h1>
+    <p>Put it on the big screen. Everyone else scans the code and throws songs at it.</p>
+  </div>
+
+  <div class="cta">
+    <button id="open" class="btn-solid btn-lg">Open a listening room</button>
+  </div>
+
+  <div class="or">or join one</div>
+
+  <form class="join" id="joinForm">
+    <input type="text" id="code" maxlength="4" placeholder="CODE" autocomplete="off"
+           autocapitalize="characters" spellcheck="false" aria-label="Room code">
+    <button type="submit" class="btn-icon" aria-label="Join room">→</button>
+  </form>
+
+  <div class="how">
+    <div><b>01</b><span>Open a room on whatever's hooked up to the speakers.</span></div>
+    <div><b>02</b><span>Everyone scans the QR code — no app, no account.</span></div>
+    <div><b>03</b><span>Paste a YouTube, Spotify or SoundCloud link, or just type a song name.</span></div>
+    <div><b>04</b><span>Most upvotes goes on next. Downvotes bury it.</span></div>
+  </div>
+</main>
+
+<script type="module">
+  import { $, toast, setupNeeded } from './js/ui.js';
+  import * as store from './js/store.js';
+  import { configured } from './js/config.js';
+
+  if (!configured()) setupNeeded('index');
+
+  const openBtn = $('#open');
+  openBtn.onclick = async () => {
+    openBtn.disabled = true;
+    openBtn.textContent = 'Warming up the deck…';
+    try {
+      const code = await store.createRoom();
+      location.href = 'room.html?r=' + code;
+    } catch (e) {
+      toast(e.message || 'Could not open a room.', true);
+      openBtn.disabled = false;
+      openBtn.textContent = 'Open a listening room';
+    }
+  };
+
+  const codeInput = $('#code');
+  codeInput.addEventListener('input', () => {
+    codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+  });
+
+  $('#joinForm').onsubmit = e => {
+    e.preventDefault();
+    const c = codeInput.value.trim();
+    if (c.length !== 4) return toast('Room codes are four characters.', true);
+    location.href = 'join.html?r=' + c;
+  };
+</script>
+</body>
+</html>

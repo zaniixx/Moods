@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Moods — room</title>
+<link rel="icon" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/app.css">
+
+<style>
+  body { min-height: 100dvh; }
+
+  /* ambient video, living behind everything ---------------------------- */
+  .ambient {
+    position: fixed; inset: 0; z-index: -2; overflow: hidden;
+    background: var(--ink);
+    transition: opacity .8s var(--ease);
+  }
+  .ambient .frame {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(1.18);
+    width: 100vw; height: 56.25vw; min-height: 100vh; min-width: 177.78vh;
+    filter: grayscale(1) blur(34px) brightness(.34) contrast(1.1);
+    transition: filter .9s var(--ease), transform .9s var(--ease);
+    pointer-events: none;
+  }
+  .ambient .frame iframe { width: 100%; height: 100%; border: 0; }
+  body.cinema .ambient .frame {
+    filter: grayscale(1) brightness(.58) contrast(1.06);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .scrim {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(ellipse at 30% 45%, rgba(10,10,11,.55), rgba(10,10,11,.93) 72%);
+    opacity: 0; transition: opacity .9s var(--ease);
+  }
+  body.cinema .scrim { opacity: 1; }
+
+  /* shell --------------------------------------------------------------- */
+  .shell {
+    max-width: 1380px; margin: 0 auto; padding: 20px var(--gut) 34px;
+    display: flex; flex-direction: column; min-height: 100dvh;
+  }
+
+  header {
+    display: flex; align-items: center; gap: 18px;
+    padding-bottom: 18px; border-bottom: 1px solid var(--ink-3);
+  }
+  header .spacer { flex: 1; }
+
+  .roomcode { display: flex; align-items: baseline; gap: 11px; }
+  .roomcode .code {
+    font-family: var(--mono); font-size: 25px; font-weight: 500;
+    letter-spacing: .3em; padding-left: .3em;
+  }
+
+  .people { font-size: 12px; color: var(--dim); display: flex; align-items: center; gap: 7px; }
+  .people .pip {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--mid);
+    animation: breathe 2.6s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+
+  /* stage --------------------------------------------------------------- */
+  .stage {
+    flex: 1; display: grid; gap: 46px; padding-top: 34px;
+    grid-template-columns: minmax(0, 1fr) minmax(330px, 420px);
+    align-items: start;
+  }
+  @media (max-width: 940px) {
+    .stage { grid-template-columns: 1fr; gap: 34px; }
+  }
+
+  /* left: the deck ------------------------------------------------------ */
+  .deckwrap { display: flex; flex-direction: column; align-items: center; }
+  .deck {
+    width: min(50vh, 430px); max-width: 100%;
+    margin-bottom: 34px; flex: 0 0 auto;
+  }
+
+  .np { text-align: center; max-width: 520px; width: 100%; }
+  .np .eyebrow { display: inline-flex; align-items: center; gap: 9px; margin-bottom: 13px; }
+  .np h2 {
+    font-size: clamp(22px, 3.1vw, 33px); font-weight: 500; letter-spacing: -.03em;
+    min-height: 1.1em;
+  }
+  .np .by { color: var(--mid); margin-top: 7px; font-size: 15px; }
+  .np .credit { color: var(--dim); font-size: 12px; margin-top: 11px; }
+
+  .transport {
+    display: flex; align-items: center; justify-content: center; gap: 11px;
+    margin-top: 26px;
+  }
+  .transport svg { width: 17px; height: 17px; fill: currentColor; }
+  .transport .btn-icon { width: 50px; height: 50px; }
+
+  #external { margin-top: 24px; width: 100%; max-width: 520px; }
+  #external iframe { width: 100%; border: 0; border-radius: 14px; }
+  .linkcard {
+    border: 1px solid var(--line); border-radius: 14px; padding: 18px;
+    text-align: center; font-size: 13px; color: var(--mid);
+  }
+  .linkcard a { color: var(--paper); }
+
+  /* right: queue + qr --------------------------------------------------- */
+  aside { display: flex; flex-direction: column; gap: 16px; }
+  .panelhead {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding-bottom: 9px; border-bottom: 1px solid var(--ink-3);
+  }
+  .queue { max-height: min(46vh, 520px); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+  .queue::-webkit-scrollbar { width: 5px; }
+  .queue::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+  /* qr card -------------------------------------------------------------- */
+  .qrcard {
+    display: flex; align-items: center; gap: 17px;
+    background: var(--paper); color: var(--ink);
+    border-radius: 16px; padding: 15px; cursor: pointer;
+    transition: transform .22s var(--ease), box-shadow .22s var(--ease);
+  }
+  .qrcard:hover { transform: translateY(-2px); box-shadow: 0 16px 40px -10px rgba(0,0,0,.7); }
+  .qrcard .qr { width: 96px; height: 96px; flex: 0 0 96px; }
+  .qrcard .qr svg { width: 100%; height: 100%; display: block; }
+  .qrcard .txt { min-width: 0; }
+  .qrcard .txt .k {
+    font-size: 10px; letter-spacing: .2em; text-transform: uppercase;
+    color: #6b6b73; font-weight: 500;
+  }
+  .qrcard .txt .v { font-size: 15px; font-weight: 500; margin-top: 3px; letter-spacing: -.02em; }
+  .qrcard .txt .u { font-family: var(--mono); font-size: 11.5px; color: #55555c; margin-top: 5px; }
+
+  /* fullscreen qr -------------------------------------------------------- */
+  .qrfull {
+    position: fixed; inset: 0; z-index: 800; display: none;
+    place-items: center; background: rgba(10,10,11,.96);
+    backdrop-filter: blur(9px); cursor: pointer;
+  }
+  .qrfull.on { display: grid; animation: fade .3s var(--ease); }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .qrfull .inner { text-align: center; animation: up .5s var(--ease) both; }
+  .qrfull .qr {
+    width: min(58vh, 420px); height: min(58vh, 420px);
+    background: var(--paper); padding: 20px; border-radius: 22px; margin: 0 auto;
+  }
+  .qrfull .qr svg { width: 100%; height: 100%; display: block; }
+  .qrfull .code {
+    font-family: var(--mono); font-size: 40px; letter-spacing: .34em;
+    margin-top: 28px; padding-left: .34em;
+  }
+  .qrfull .u { color: var(--dim); font-family: var(--mono); font-size: 14px; margin-top: 9px; }
+  .qrfull .hint { color: var(--dim); font-size: 12px; margin-top: 26px; }
+
+  /* start overlay -------------------------------------------------------- */
+  .start {
+    position: fixed; inset: 0; z-index: 850; display: grid; place-items: center;
+    background: rgba(10,10,11,.97); text-align: center; padding: 30px;
+  }
+  .start.gone { animation: fadeOut .6s var(--ease) forwards; pointer-events: none; }
+  @keyframes fadeOut { to { opacity: 0; visibility: hidden; } }
+  .start h2 { font-size: clamp(26px, 5vw, 40px); margin-bottom: 14px; letter-spacing: -.035em; }
+  .start p { color: var(--dim); max-width: 38ch; margin: 0 auto 30px; }
+  .start .deck { width: min(34vh, 250px); margin: 0 auto 36px; }
+  .start .deck .vinyl { animation-play-state: running; animation-duration: 3.4s; }
+
+  .viewonly {
+    font-size: 11px; color: var(--dim); border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 12px;
+  }
+</style>
+</head>
+<body>
+
+<div class="ambient"><div class="frame"><div id="ytmount"></div></div></div>
+<div class="scrim"></div>
+
+<div class="shell">
+  <header>
+    <a class="wordmark" href="./"><span class="dot"></span> Moods</a>
+    <div class="spacer"></div>
+    <div class="people" id="people" hidden><span class="pip"></span><span id="peopleN"></span></div>
+    <div class="roomcode">
+      <span class="eyebrow">Room</span>
+      <span class="code" id="code">····</span>
+    </div>
+    <span class="viewonly" id="viewonly" hidden>view only</span>
+    <button id="cinema" title="Toggle video">Video</button>
+  </header>
+
+  <div class="stage">
+    <section class="deckwrap">
+      <div class="deck" id="deck">
+        <div class="platter"></div>
+        <div class="vinyl">
+          <div class="label-art" id="labelArt"><img alt=""></div>
+        </div>
+        <div class="sheen"></div>
+        <div class="tonearm">
+          <div class="pivot"></div>
+          <div class="arm"><div class="weight"></div><div class="head"></div></div>
+        </div>
+      </div>
+
+      <div class="np">
+        <div class="eyebrow" id="npLabel">
+          <span class="eq"><i></i><i></i><i></i><i></i></span> Now playing
+        </div>
+        <h2 id="npTitle">Nothing on the deck yet</h2>
+        <div class="by" id="npArtist"></div>
+        <div class="credit" id="npCredit"></div>
+
+        <div class="transport" id="transport">
+          <button class="btn-icon" id="playPause" aria-label="Play or pause"></button>
+          <button class="btn-icon" id="skip" aria-label="Skip to next">
+            <svg viewBox="0 0 24 24"><path d="M6 5.4 15 12l-9 6.6zM16.6 5.4H19v13.2h-2.4z"/></svg>
+          </button>
+          <button id="focus" class="focusbtn" aria-pressed="false"
+                  title="Turn it down so people can talk (F)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9.5h3.2L12 5.4v13.2L7.2 14.5H4z"/>
+              <path d="M15.4 9.8c.9.9.9 3.5 0 4.4" fill="none" stroke="currentColor"
+                    stroke-width="1.7" stroke-linecap="round"/>
+            </svg>
+            <span id="focusLabel">Focus</span>
+          </button>
+        </div>
+
+        <div class="focusbar" id="focusbar" hidden>
+          <label for="focusLevel" class="eyebrow">Level</label>
+          <input type="range" id="focusLevel" min="0" max="80" step="5" value="25"
+                 aria-label="Focus volume level">
+          <span class="mono" id="focusPct">25%</span>
+        </div>
+
+        <div id="external"></div>
+      </div>
+    </section>
+
+    <aside>
+      <div class="panelhead">
+        <span class="eyebrow">Up next</span>
+        <span class="eyebrow" id="qCount"></span>
+      </div>
+      <ul class="queue" id="queue"></ul>
+      <div class="empty" id="qEmpty">
+        <div class="big">Queue's empty</div>
+        <div>Scan the code and put something on.</div>
+      </div>
+
+      <div class="qrcard" id="qrcard" role="button" tabindex="0" title="Tap to enlarge">
+        <div class="qr" id="qrSmall"></div>
+        <div class="txt">
+          <div class="k">Scan to join</div>
+          <div class="v">Queue a song from your phone</div>
+          <div class="u truncate" id="joinUrl"></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="qrfull" id="qrfull">
+  <div class="inner">
+    <div class="qr" id="qrBig"></div>
+    <div class="code" id="codeBig"></div>
+    <div class="u" id="urlBig"></div>
+    <div class="hint">tap anywhere to close</div>
+  </div>
+</div>
+
+<div class="start" id="start">
+  <div>
+    <div class="deck">
+      <div class="platter"></div>
+      <div class="vinyl"></div>
+      <div class="sheen"></div>
+    </div>
+    <h2>Drop the needle</h2>
+    <p>Browsers won't let a page make noise until you tell it to. One tap and the room is live.</p>
+    <button class="btn-solid btn-lg" id="startBtn">Start the room</button>
+  </div>
+</div>
+
+<script src="assets/qrcode.min.js"></script>
+<script type="module" src="js/room.js"></script>
+</body>
+</html>

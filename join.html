@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Moods — queue a song</title>
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" href="assets/favicon.svg">
+<link rel="stylesheet" href="assets/app.css">
+
+<style>
+  body { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+
+  .wrap { max-width: 620px; margin: 0 auto; padding: 0 var(--gut); }
+
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 0 14px; border-bottom: 1px solid var(--ink-3);
+    position: sticky; top: 0; z-index: 30;
+    background: linear-gradient(var(--ink) 74%, transparent);
+    backdrop-filter: blur(11px);
+  }
+  header .spacer { flex: 1; }
+  header .code {
+    font-family: var(--mono); font-size: 14px; letter-spacing: .26em;
+    color: var(--mid); padding-left: .26em;
+  }
+
+  /* now playing --------------------------------------------------------- */
+  .now {
+    display: flex; align-items: center; gap: 15px;
+    padding: 20px 0; border-bottom: 1px solid var(--ink-3);
+  }
+  .now .meta { min-width: 0; flex: 1; }
+  .now .eyebrow { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .now .t { font-size: 16px; font-weight: 500; letter-spacing: -.015em; }
+  .now .a { font-size: 12.5px; color: var(--dim); margin-top: 2px; }
+
+  /* queue --------------------------------------------------------------- */
+  .panelhead {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 22px 0 8px;
+  }
+  .row { padding: 10px 0; }
+  .row .art { width: 40px; height: 40px; flex-basis: 40px; }
+  .vote { width: 38px; height: 38px; }
+
+  /* composer ------------------------------------------------------------ */
+  .composer {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    padding: 13px var(--gut) calc(13px + env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, var(--ink) 26%);
+  }
+  .composer form {
+    display: flex; gap: 9px; max-width: 620px; margin: 0 auto;
+  }
+  /* 16px keeps iOS from zooming the page when the field takes focus */
+  .composer input { border-radius: 14px; font-size: 16px; }
+  .composer .go {
+    flex: 0 0 52px; width: 52px; height: 52px; border-radius: 14px; padding: 0;
+    background: var(--paper); color: var(--ink); border-color: var(--paper);
+    font-size: 20px;
+  }
+  .composer .go:disabled { opacity: .3; }
+  .hint {
+    max-width: 620px; margin: 8px auto 0; font-size: 11px; color: var(--dim);
+    text-align: center;
+  }
+
+  .spinner {
+    width: 17px; height: 17px; border-radius: 50%;
+    border: 2px solid rgba(10,10,11,.25); border-top-color: var(--ink);
+    animation: spin .7s linear infinite;
+  }
+
+  /* name gate ----------------------------------------------------------- */
+  .gate {
+    position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+    background: var(--ink); padding: 30px var(--gut);
+  }
+  .gate.gone { animation: fadeOut .45s var(--ease) forwards; pointer-events: none; }
+  @keyframes fadeOut { to { opacity: 0; visibility: hidden; } }
+  .gate .inner { width: 100%; max-width: 340px; text-align: center; }
+  .gate .mini { margin: 0 auto 26px; width: 74px; height: 74px; flex-basis: 74px; }
+  .gate h2 { font-size: 26px; margin-bottom: 8px; letter-spacing: -.03em; }
+  .gate p { color: var(--dim); font-size: 14px; margin-bottom: 26px; }
+  .gate form { display: grid; gap: 11px; }
+  .gate input { text-align: center; font-size: 17px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <a class="wordmark" href="./"><span class="dot"></span> Moods</a>
+    <span class="spacer"></span>
+    <span class="code" id="code">····</span>
+  </header>
+
+  <div class="now" id="nowWrap" hidden>
+    <div class="mini" id="mini"><img alt="" id="miniArt" hidden></div>
+    <div class="meta">
+      <div class="eyebrow" id="nowLabel">
+        <span class="eq"><i></i><i></i><i></i><i></i></span> Now playing
+      </div>
+      <div class="t truncate" id="nowTitle"></div>
+      <div class="a truncate" id="nowArtist"></div>
+    </div>
+  </div>
+
+  <div class="panelhead">
+    <span class="eyebrow">Up next</span>
+    <span class="eyebrow" id="qCount"></span>
+  </div>
+
+  <ul class="queue" id="queue"></ul>
+
+  <div class="empty" id="qEmpty">
+    <div class="big">Nothing queued</div>
+    <div>Be the one who starts it.</div>
+  </div>
+</div>
+
+<div class="composer">
+  <form id="addForm">
+    <input type="text" id="q" autocomplete="off" autocorrect="off" spellcheck="false"
+           placeholder="Paste a link, or type a song" aria-label="Song link or name">
+    <button class="go" id="go" type="submit" aria-label="Add to queue">↑</button>
+  </form>
+  <div class="hint" id="hint">YouTube · Spotify · SoundCloud · or just a song name</div>
+</div>
+
+<div class="gate" id="gate">
+  <div class="inner">
+    <div class="mini spinning"></div>
+    <h2>Who's picking?</h2>
+    <p>So the room knows whose taste to blame.</p>
+    <form id="nameForm">
+      <input type="text" id="name" maxlength="18" placeholder="your name"
+             autocomplete="nickname" autocapitalize="words">
+      <button class="btn-solid btn-lg" type="submit">Join the room</button>
+    </form>
+  </div>
+</div>
+
+<script type="module" src="js/join.js"></script>
+</body>
+</html>
