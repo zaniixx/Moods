@@ -98,6 +98,7 @@ access. Access is decided by the rules below.
             "platform":   { ".validate": "newData.val() === 'youtube' || newData.val() === 'spotify' || newData.val() === 'soundcloud' || newData.val() === 'link'" },
             "ts":         { ".validate": "newData.isNumber()" },
             "id":         { ".validate": "newData.val() === $track" },
+            "playedAt":   { ".write": "auth != null && !newData.exists()", ".validate": "newData.isNumber()" },
 
             "votes": {
               "$uid": {
@@ -130,6 +131,9 @@ What these actually enforce:
 - **A queued track can be created but never edited** — only the host can delete
   one. Without that, whoever added a song could rewrite its `votes` afterwards
   and quietly boost themselves.
+- **Played songs stay in the queue, grayed out.** Only the host marks a song
+  played (when it leaves the deck, votes wiped); anyone may clear that mark,
+  which is what upvoting a played song does to bring it back.
 - **Fields are shape- and length-checked**, and `$other` rejects anything not
   listed, so the room can't be used as free storage for someone else's data.
 

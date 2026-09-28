@@ -117,7 +117,8 @@ function buildRow(t, i, opts) {
 
 function fillRow(li, t, i) {
   li._track = t;
-  li.querySelector('.rank').textContent = String(i + 1).padStart(2, '0');
+  li.classList.toggle('played', !!t.played);
+  li.querySelector('.rank').textContent = t.played ? '✓' : String(i + 1).padStart(2, '0');
 
   const title = li.querySelector('.meta .t');
   if (title.textContent !== t.title) title.textContent = t.title;
@@ -148,8 +149,12 @@ function fillRow(li, t, i) {
 
   const up = li.querySelector('.vote.up');
   if (up) {
+    const down = li.querySelector('.vote.down');
     up.classList.toggle('on', t.myVote === 1);
-    li.querySelector('.vote.down').classList.toggle('on', t.myVote === -1);
+    down.classList.toggle('on', t.myVote === -1);
+    // A played song can only be voted back in
+    down.disabled = !!t.played;
+    up.setAttribute('aria-label', t.played ? 'Play again' : 'Upvote');
   }
 }
 

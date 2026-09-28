@@ -391,6 +391,11 @@ body.focused .deck { opacity: .72; transition: opacity .5s var(--ease); }
 }
 
 /* enter / leave / reorder */
+/* already played: sits at the bottom until someone votes it back in */
+.row.played .meta, .row.played .art, .row.played .rank, .row.played .score { opacity: .38; }
+.row.played .rank { color: var(--dim); }
+.row.played .vote.down:disabled { opacity: .15; pointer-events: none; }
+
 .row.entering { animation: rowIn .5s var(--ease) both; }
 @keyframes rowIn {
   from { opacity: 0; transform: translateY(10px); }

@@ -97,6 +97,11 @@ eq('highest score first', L.sortQueue([A, B, C]).map(x => x.id), ['B', 'C', 'A']
 eq('a tie goes to whoever asked first', L.sortQueue([A, C]).map(x => x.id), ['C', 'A']);
 const D = t({ a: -1, b: -1 }, 10, 'D');
 eq('buried tracks sink', L.sortQueue([A, D]).map(x => x.id), ['A', 'D']);
+const P1 = { id: 'P1', ts: 1, playedAt: 50, votes: {} }, P2 = { id: 'P2', ts: 2, playedAt: 40, votes: {} };
+eq('played songs sink below everything', L.sortQueue([P1, D, A]).map(x => x.id), ['A', 'D', 'P1']);
+eq('played songs keep the order they played in', L.sortQueue([P1, P2]).map(x => x.id), ['P2', 'P1']);
+eq('a played song loses its votes and gets a stamp',
+   L.asPlayed({ id: 'x', title: 't', votes: { a: 1 } }, 99), { id: 'x', title: 't', playedAt: 99 });
 eq('sorting does not mutate the input', [A, B, C].map(x => x.id), ['A', 'B', 'C']);
 
 group('reading a room');
@@ -117,6 +122,9 @@ eq('someone else’s is not', r.queue[1].myVote, 0);
 eq('knows which are mine', r.queue.map(x => x.mine), [true, false]);
 eq('now playing is decorated', r.now.score, 1);
 eq('counts listeners', r.listeners, 3);
+const rp = L.readRoom({ queue: { a: { id: 'a', ts: 1, votes: {} }, b: { id: 'b', ts: 2, playedAt: 5 } } }, 'me');
+eq('counts upcoming and played apart', [rp.upcoming, rp.played], [1, 1]);
+eq('played songs are flagged', rp.queue.map(x => x.played), [false, true]);
 eq('an empty room is safe to read', L.readRoom(null, 'me').queue, []);
 eq('a room with no queue is safe', L.readRoom({ code: 'X' }, 'me').queue, []);
 

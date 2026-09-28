@@ -5,7 +5,7 @@
    hostUid, and only they can move the needle. */
 
 import { FIREBASE, configured } from './config.js';
-import { roomCode, readRoom, nextVote, cleanName, findExisting, newTracksOnly, isExpired } from './lib.js';
+import { roomCode, readRoom, nextVote, cleanName, findExisting, newTracksOnly, asPlayed, isExpired } from './lib.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/12.4.0/';
 
@@ -92,6 +92,10 @@ export async function addTrack(code, meta, name) {
 
   // Re-adding something already queued is an upvote, not a duplicate.
   const dupe = findExisting(room, meta.ref);
+  if (dupe && dupe.track.played) {
+    await revive(code, dupe.track.id);
+    return { merged: true, message: 'Played earlier — back in the queue with your vote.' };
+  }
   if (dupe) {
     if (dupe.track.myVote === 1) {
       return { merged: true, message: "That one's already in the queue." };
@@ -141,8 +145,19 @@ export async function addTracks(code, metas, name) {
   return { added: fresh.length, skipped: metas.length - fresh.length };
 }
 
-export async function vote(code, trackId, dir, current) {
+/** Back into contention: no longer played, starting from this one vote. */
+async function revive(code, trackId) {
+  await fb.update(fb.ref(db, `rooms/${code}/queue/${trackId}`),
+                  { playedAt: null, ['votes/' + uid]: 1 });
+}
+
+export async function vote(code, trackId, dir, current, played) {
   await start();
+  if (played) {
+    // Only an upvote brings a played song back; a downvote on one is moot.
+    if (dir > 0) await revive(code, trackId);
+    return;
+  }
   const want = nextVote(current, dir);
   const path = fb.ref(db, `rooms/${code}/queue/${trackId}/votes/${uid}`);
   if (want === null) await fb.remove(path);
@@ -156,13 +171,15 @@ export async function playNext(code) {
   const snap = await fb.get(roomRef(code));
   if (!snap.exists()) return;
   const raw = snap.val();
-  const winnerId = readRoom(raw, uid).queue[0]?.id;   // sorted by score, then age
+  const winnerId = readRoom(raw, uid).queue.find(t => !t.played)?.id;   // sorted by score, then age
   // Write the stored record, not the decorated one: score/myVote/mine are
   // derived per viewer and have no business being saved.
   const winner = winnerId ? raw.queue[winnerId] : null;
   // One write, so no one ever sees the winner both on the deck and queued.
   const patch = { now: winner || null, playing: true };
   if (winnerId) patch['queue/' + winnerId] = null;
+  // What was playing drops to the bottom of the queue, grayed out.
+  if (raw.now && raw.now.id) patch['queue/' + raw.now.id] = asPlayed(raw.now, Date.now());
   await fb.update(roomRef(code), patch);
 }
 

@@ -272,7 +272,7 @@ function syncPlayer(now) {
   if (!now) {
     loadedId = null; loadedPlatform = null;
     setSpinning(false); setLabelArt(null); clearSpotify(); stopYouTube();
-    if (state && state.queue.length) kick();
+    if (state && state.upcoming) kick();   // played songs don't count
     return;
   }
 
@@ -323,9 +323,10 @@ function render(s) {
   $('#people').hidden = heads < 1;
   $('#peopleN').textContent = heads === 1 ? '1 here' : `${heads} here`;
 
-  const n = s.queue.length;
-  $('#qCount').textContent = n ? `${n} song${n === 1 ? '' : 's'}` : '';
-  qEmpty.hidden = n > 0;
+  $('#qCount').textContent = s.upcoming || s.played
+    ? [s.upcoming && `${s.upcoming} song${s.upcoming === 1 ? '' : 's'}`, s.played && `${s.played} played`].filter(Boolean).join(' · ')
+    : '';
+  qEmpty.hidden = s.upcoming > 0;
 
   renderQueue(queueEl, s.queue, IS_HOST ? { onRemove: removeTrack } : {});
 

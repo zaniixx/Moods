@@ -177,8 +177,13 @@ async function vote(track, dir) {
 
   // Move the UI now; Firebase echoes the real value back a beat later.
   const t = state && state.queue.find(x => x.id === track.id);
-  const was = track.myVote;
-  if (t) {
+  const was = track.myVote, played = track.played;
+  if (played && dir < 0) return;
+  if (t && played) {
+    // Votes were wiped when it played, so this one vote is its whole score.
+    Object.assign(t, { played: false, score: 1, up: 1, down: 0, myVote: 1 });
+    paint(state);
+  } else if (t) {
     const next = was === dir ? 0 : dir;
     t.score += next - was;
     if (next === 1) t.up++; else if (was === 1) t.up--;
@@ -188,7 +193,7 @@ async function vote(track, dir) {
   }
 
   try {
-    await store.vote(CODE, track.id, dir, was);
+    await store.vote(CODE, track.id, dir, was, played);
   } catch (e) {
     toast(e.message || 'Vote did not save.', true);
   }
@@ -199,9 +204,10 @@ async function vote(track, dir) {
 const queueEl = $('#queue'), qEmpty = $('#qEmpty');
 
 function paint(s) {
-  const n = s.queue.length;
-  $('#qCount').textContent = n ? `${n} song${n === 1 ? '' : 's'}` : '';
-  qEmpty.hidden = n > 0;
+  $('#qCount').textContent = s.upcoming || s.played
+    ? [s.upcoming && `${s.upcoming} song${s.upcoming === 1 ? '' : 's'}`, s.played && `${s.played} played`].filter(Boolean).join(' · ')
+    : '';
+  qEmpty.hidden = s.upcoming > 0;
   renderQueue(queueEl, s.queue, { onVote: vote });
 
   const now = s.now;

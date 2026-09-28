@@ -76,9 +76,20 @@ export function tally(track) {
   return { up, down };
 }
 
-/** Highest score first; a tie goes to whoever asked first. */
+/**
+ * Highest score first; a tie goes to whoever asked first. Songs that have
+ * already played sink below everything else, in the order they played.
+ */
 export function sortQueue(tracks) {
-  return [...tracks].sort((a, b) => (score(b) - score(a)) || (a.ts - b.ts));
+  return [...tracks].sort((a, b) =>
+    (!!a.playedAt - !!b.playedAt) ||
+    (a.playedAt ? a.playedAt - b.playedAt : (score(b) - score(a)) || (a.ts - b.ts)));
+}
+
+/** The deck's record as it goes back into the queue: played, votes wiped. */
+export function asPlayed(track, at) {
+  const { votes, ...rest } = track;
+  return { ...rest, playedAt: at };
 }
 
 /**
@@ -99,9 +110,11 @@ export function readRoom(raw, uid) {
     const { up, down } = tally(t);
     return { ...t, score: score(t), up, down,
              myVote: (t.votes && t.votes[uid]) || 0,
-             mine: t.addedByUid === uid };
+             mine: t.addedByUid === uid,
+             played: !!t.playedAt };
   };
   const queue = sortQueue(Object.values(room.queue || {})).map(decorate);
+  const upcoming = queue.filter(t => !t.played).length;
   const presence = room.presence || {};
   return {
     code: room.code || '',
@@ -110,6 +123,8 @@ export function readRoom(raw, uid) {
     createdAt: room.createdAt || 0,
     now: decorate(room.now),
     queue,
+    upcoming,
+    played: queue.length - upcoming,
     listeners: Object.keys(presence).length,
   };
 }
