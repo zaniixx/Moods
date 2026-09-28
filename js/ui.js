@@ -1,5 +1,7 @@
 /* Moods - shared UI bits: storage, toasts, and the animated queue list. */
 
+import { voterLine } from './lib.js';
+
 export const ls = {
   get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
@@ -70,7 +72,9 @@ function buildRow(t, i, opts) {
   title.className = 't truncate';
   const sub = document.createElement('div');
   sub.className = 's truncate';
-  meta.append(title, sub);
+  const who = document.createElement('div');
+  who.className = 'w truncate';
+  meta.append(title, sub, who);
   li.appendChild(meta);
 
   if (opts.onVote) {
@@ -118,7 +122,7 @@ function buildRow(t, i, opts) {
 function fillRow(li, t, i) {
   li._track = t;
   li.classList.toggle('played', !!t.played);
-  li.querySelector('.rank').textContent = t.played ? '✓' : String(i + 1).padStart(2, '0');
+  li.querySelector('.rank').textContent = String(i + 1).padStart(2, '0');
 
   const title = li.querySelector('.meta .t');
   if (title.textContent !== t.title) title.textContent = t.title;
@@ -134,6 +138,11 @@ function fillRow(li, t, i) {
     sub.dataset.v = want;
   }
 
+  const who = li.querySelector('.meta .w');
+  const names = voterLine(t);
+  if (who.textContent !== names) who.textContent = names;
+  who.hidden = !names;
+
   const score = li.querySelector('.score');
   const next = String(t.score);
   if (score.textContent !== next) {
@@ -145,16 +154,12 @@ function fillRow(li, t, i) {
     score.textContent = next;
   }
   score.classList.toggle('neg', t.score < 0);
-  score.title = `${t.up} up · ${t.down} down`;
+  score.title = names || `${t.up} up · ${t.down} down`;
 
   const up = li.querySelector('.vote.up');
   if (up) {
-    const down = li.querySelector('.vote.down');
     up.classList.toggle('on', t.myVote === 1);
-    down.classList.toggle('on', t.myVote === -1);
-    // A played song can only be voted back in
-    down.disabled = !!t.played;
-    up.setAttribute('aria-label', t.played ? 'Play again' : 'Upvote');
+    li.querySelector('.vote.down').classList.toggle('on', t.myVote === -1);
   }
 }
 

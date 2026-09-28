@@ -69,24 +69,27 @@ tid = "-Ntest" + "".join(random.choice(string.ascii_letters) for _ in range(6))
 track = {"id": tid, "title": "Test Track", "artist": "Nobody", "url": "https://youtu.be/dQw4w9WgXcQ",
          "thumb": "", "ref": "dQw4w9WgXcQ", "platform": "youtube",
          "addedBy": "Guest", "addedByUid": guestUid, "ts": int(time.time()*1000),
-         "votes": {guestUid: 1}}
+         "votes": {guestUid: {"v": 1, "name": "Guest"}}}
+vote = lambda v, name: {"v": v, "name": name}
 s, d = put(f"rooms/{CODE}/queue/{tid}", guestTok, track)
 t("guest can queue a song", s == 200, d)
 
-s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{hostUid}", hostTok, 1)
-t("host can upvote it", s == 200, d)
-s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{guestUid}", guestTok, -1)
+s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{hostUid}", hostTok, vote(1, "Host"))
+t("host can upvote it, stamped with their name", s == 200, d)
+s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{guestUid}", guestTok, vote(-1, "Guest"))
 t("guest can change their own vote", s == 200, d)
+s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{guestUid}/name", guestTok, "Guest Two")
+t("guest can rename their own vote", s == 200, d)
 s, d = delete(f"rooms/{CODE}/queue/{tid}/votes/{guestUid}", guestTok)
 t("guest can withdraw their own vote", s == 200, d)
 s, d = put(f"rooms/{CODE}/presence/{guestUid}", guestTok, int(time.time()*1000))
 t("guest can mark themselves present", s == 200, d)
-s, d = put(f"rooms/{CODE}/now/votes/{guestUid}", guestTok, 1)
-t("guest can upvote what's playing", s == 200, d)
 
 print("\n\033[1mwhat the rules must refuse\033[0m")
-s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{hostUid}", guestTok, 1)
+s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{hostUid}", guestTok, vote(1, "Host"))
 t("guest cannot vote as someone else", s == 401, f"got {s}")
+s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{hostUid}/name", guestTok, "Guest")
+t("guest cannot rename someone else's vote", s == 401, f"got {s}")
 s, d = delete(f"rooms/{CODE}/queue/{tid}/votes/{hostUid}", guestTok)
 t("guest cannot remove someone else's vote", s == 401, f"got {s}")
 s, d = delete(f"rooms/{CODE}/queue/{tid}/votes", guestTok)
@@ -94,17 +97,31 @@ t("guest cannot wipe a track's votes", s == 401, f"got {s}")
 s, d = put(f"rooms/{CODE}/queue/{tid}/playedAt", guestTok, 1)
 t("guest cannot mark a song played", s == 401, f"got {s}")
 s, d = get(f"rooms/{CODE}/queue/{tid}/votes/{hostUid}", guestTok)
-t("the host's vote is still there", d == 1, f"got {d}")
+t("the host's vote is still there", d == vote(1, "Host"), f"got {d}")
+for bad_vote, why in [(1, "a vote must carry a name"),
+                      ({"v": 1}, "a vote without a name is refused"),
+                      (vote(1, ""), "a blank name is refused"),
+                      (vote(1, "x" * 19), "a name over 18 characters is refused"),
+                      (dict(vote(1, "Guest"), extra=1), "a vote can't carry anything else")]:
+    s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{guestUid}", guestTok, bad_vote)
+    t(why, s == 401, f"got {s}")
+stuffed = dict(track, id=f"v{tid}", votes={guestUid: vote(1, "Guest"), hostUid: vote(1, "Host")})
+s, d = put(f"rooms/{CODE}/queue/v{tid}", guestTok, stuffed)
+t("nobody can add a song with someone else's vote on it", s == 401, f"got {s}")
+s, d = put(f"rooms/{CODE}/queue/p{tid}", guestTok, dict(track, id=f"p{tid}", playedAt=1))
+t("guest cannot add a song as already played", s == 401, f"got {s}")
+s, d = put(f"rooms/{CODE}/now/votes/{guestUid}", guestTok, vote(1, "Guest"))
+t("guest cannot write to what's playing", s == 401, f"got {s}")
 s, d = patch(f"rooms/{CODE}", guestTok, {"playing": False})
 t("guest cannot control playback", s == 401, f"got {s}")
 s, d = patch(f"rooms/{CODE}", guestTok, {"hostUid": guestUid})
 t("guest cannot seize the room", s == 401, f"got {s}")
 s, d = delete(f"rooms/{CODE}/queue/{tid}", guestTok)
 t("guest cannot remove a track", s == 401, f"got {s}")
-forged = dict(track); forged["votes"] = {guestUid: 1, hostUid: 1, "x1": 1, "x2": 1}
+forged = dict(track); forged["votes"] = {guestUid: vote(1, "G"), hostUid: vote(1, "H"), "x1": vote(1, "X")}
 s, d = put(f"rooms/{CODE}/queue/{tid}", guestTok, forged)
 t("nobody can rewrite a track to forge votes", s == 401, f"got {s}")
-s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{guestUid}", guestTok, 99)
+s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{guestUid}", guestTok, vote(99, "Guest"))
 t("a vote can only be +1 or -1", s == 401, f"got {s}")
 bad = dict(track); bad["platform"] = "napster"
 s, d = put(f"rooms/{CODE}/queue/x{tid}", guestTok, bad)
@@ -120,6 +137,15 @@ t("guest cannot close the room", s == 401, f"got {s}")
 print("\n\033[1mwhat the host can do\033[0m")
 s, d = patch(f"rooms/{CODE}", hostTok, {"playing": False})
 t("host can pause", s == 200, d)
+# What playNext writes: the guest's song onto the deck, then into the
+# played queue with its votes gone. addedByUid stays the guest's.
+bare = {k: v for k, v in track.items() if k != "votes"}
+s, d = patch(f"rooms/{CODE}", hostTok, {"now": dict(bare, startedAt=1), f"queue/{tid}": None})
+t("host can put a guest's song on the deck", s == 200, d)
+s, d = patch(f"rooms/{CODE}", hostTok, {"now": None, f"queue/{tid}": dict(bare, playedAt=2)})
+t("host can move it to the played queue", s == 200, d)
+s, d = put(f"rooms/{CODE}/queue/{tid}/votes/{guestUid}", guestTok, vote(1, "Guest"))
+t("guest can vote in the played queue", s == 200, d)
 s, d = delete(f"rooms/{CODE}/queue/{tid}", hostTok)
 t("host can remove a track", s == 200, d)
 

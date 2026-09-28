@@ -62,34 +62,68 @@ export function cleanName(name) {
   return n || 'someone';
 }
 
+/** A vote is stored as { v: 1 | -1, name }. Bare numbers predate the names. */
+export const voteValue = x => (typeof x === 'number' ? x : (x && x.v) || 0);
+
 export function score(track) {
   const v = (track && track.votes) || {};
   let n = 0;
-  for (const k in v) n += v[k];
+  for (const k in v) n += voteValue(v[k]);
   return n;
 }
 
+/** How many each way, and who: the name each vote was stamped with. */
 export function tally(track) {
   const v = (track && track.votes) || {};
   let up = 0, down = 0;
-  for (const k in v) (v[k] > 0 ? up++ : v[k] < 0 && down++);
-  return { up, down };
+  const upBy = [], downBy = [];
+  for (const k in v) {
+    const val = voteValue(v[k]), name = v[k] && v[k].name;
+    if (val > 0) { up++; if (name) upBy.push(name); }
+    else if (val < 0) { down++; if (name) downBy.push(name); }
+  }
+  return { up, down, upBy, downBy };
+}
+
+/** "▲ Alice, Bob   ▼ Dan" - who's behind a song's score. */
+export function voterLine(t) {
+  const bits = [];
+  if (t.upBy && t.upBy.length) bits.push('▲ ' + t.upBy.join(', '));
+  if (t.downBy && t.downBy.length) bits.push('▼ ' + t.downBy.join(', '));
+  return bits.join('   ');
 }
 
 /**
- * Highest score first; a tie goes to whoever asked first. Songs that have
- * already played sink below everything else, in the order they played.
+ * Two tiers. Songs still to play come first: highest score, then whoever
+ * asked first. Played songs follow in the order they'll come back round:
+ * highest score, then whichever played longest ago.
  */
 export function sortQueue(tracks) {
   return [...tracks].sort((a, b) =>
     (!!a.playedAt - !!b.playedAt) ||
-    (a.playedAt ? a.playedAt - b.playedAt : (score(b) - score(a)) || (a.ts - b.ts)));
+    (score(b) - score(a)) ||
+    (a.playedAt ? a.playedAt - b.playedAt : a.ts - b.ts));
 }
 
-/** The deck's record as it goes back into the queue: played, votes wiped. */
-export function asPlayed(track, at) {
-  const { votes, ...rest } = track;
-  return { ...rest, playedAt: at };
+// Votes and play stamps belong to one trip through the queue, not the song.
+function bare(track) {
+  const { votes, playedAt, startedAt, ...rest } = track;
+  return rest;
+}
+
+/** Onto the deck. `startedAt` tells a repeat apart from the last play. */
+export const asPlaying = (track, at) => ({ ...bare(track), startedAt: at });
+
+/** Into the played queue, votes back to zero. */
+export const asPlayed = (track, at) => ({ ...bare(track), playedAt: at });
+
+/**
+ * What goes on after the current song. Anything not yet played beats
+ * everything that has; played songs only come back once nothing else is
+ * left. A room with a single song just repeats it.
+ */
+export function pickNext(room) {
+  return (room.queue && room.queue[0]) || room.now || null;
 }
 
 /**
@@ -107,14 +141,12 @@ export function readRoom(raw, uid) {
   const room = raw || {};
   const decorate = t => {
     if (!t) return null;
-    const { up, down } = tally(t);
-    return { ...t, score: score(t), up, down,
-             myVote: (t.votes && t.votes[uid]) || 0,
+    return { ...t, ...tally(t), score: score(t),
+             myVote: voteValue(t.votes && t.votes[uid]),
              mine: t.addedByUid === uid,
              played: !!t.playedAt };
   };
   const queue = sortQueue(Object.values(room.queue || {})).map(decorate);
-  const upcoming = queue.filter(t => !t.played).length;
   const presence = room.presence || {};
   return {
     code: room.code || '',
@@ -122,14 +154,14 @@ export function readRoom(raw, uid) {
     hostUid: room.hostUid || '',
     createdAt: room.createdAt || 0,
     now: decorate(room.now),
-    queue,
-    upcoming,
-    played: queue.length - upcoming,
+    queue,                                    // everything, in play order
+    upNext: queue.filter(t => !t.played),
+    played: queue.filter(t => t.played),
     listeners: Object.keys(presence).length,
   };
 }
 
-/** Is this already queued (or on the deck)? Re-adding should vote, not duplicate. */
+/** Is this already queued, played, or on the deck? Re-adding should vote, not duplicate. */
 export function findExisting(room, ref) {
   if (room.now && room.now.ref === ref) return { where: 'now', track: room.now };
   const hit = (room.queue || []).find(t => t.ref === ref);

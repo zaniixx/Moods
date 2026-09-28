@@ -4,7 +4,7 @@ import { $, ls, toast, renderQueue, setupNeeded } from './ui.js';
 import * as store from './store.js';
 import { configured } from './config.js';
 import { resolve, resolvePick, resolvePlaylist, suggest, searchAvailable, MAX_PLAYLIST } from './resolve.js';
-import { parseInput } from './lib.js';
+import { parseInput, cleanName } from './lib.js';
 
 const params = new URLSearchParams(location.search);
 const CODE = (params.get('r') || '').toUpperCase();
@@ -14,16 +14,39 @@ let myName = ls.get('moods.name', '');
 
 /* -------------------------------------------------------------- name ---- */
 
-const gate = $('#gate');
-if (myName) gate.classList.add('gone');
+// The name is asked for each time a room link is opened - remembered, so
+// it's one tap - but not again when the same room is reloaded. It's the
+// name stamped on every vote.
+const gate = $('#gate'), nameInput = $('#name'), meBtn = $('#me');
+nameInput.value = myName;
+if (myName && ls.get('moods.joined', '') === CODE) gate.classList.add('gone');
+
+function paintMe() {
+  meBtn.textContent = myName;
+  meBtn.hidden = !myName;
+}
+paintMe();
+
+meBtn.onclick = () => {
+  nameInput.value = myName;
+  gate.classList.remove('gone');
+  nameInput.focus();
+  nameInput.select();
+};
 
 $('#nameForm').onsubmit = e => {
   e.preventDefault();
-  const v = $('#name').value.trim().slice(0, 18);
-  if (!v) { $('#name').focus(); return; }
+  const v = nameInput.value.replace(/\s+/g, ' ').trim().slice(0, 18);
+  if (!v) { nameInput.focus(); return; }
+  const renamed = v !== myName;
   myName = v;
   ls.set('moods.name', v);
+  ls.set('moods.joined', CODE);
+  paintMe();
   gate.classList.add('gone');
+  if (renamed && state && state.queue.some(t => t.myVote)) {
+    store.restamp(CODE, v).catch(() => toast("Couldn't update the name on your votes.", true));
+  }
   setTimeout(() => $('#q').focus(), 350);
 };
 
@@ -174,26 +197,22 @@ function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch {} }
 
 async function vote(track, dir) {
   buzz(8);
+  const was = track.myVote;
 
   // Move the UI now; Firebase echoes the real value back a beat later.
   const t = state && state.queue.find(x => x.id === track.id);
-  const was = track.myVote, played = track.played;
-  if (played && dir < 0) return;
-  if (t && played) {
-    // Votes were wiped when it played, so this one vote is its whole score.
-    Object.assign(t, { played: false, score: 1, up: 1, down: 0, myVote: 1 });
-    paint(state);
-  } else if (t) {
-    const next = was === dir ? 0 : dir;
+  if (t) {
+    const next = was === dir ? 0 : dir, me = cleanName(myName);
+    const drop = list => { const i = list.indexOf(me); if (i >= 0) list.splice(i, 1); };
     t.score += next - was;
-    if (next === 1) t.up++; else if (was === 1) t.up--;
-    if (next === -1) t.down++; else if (was === -1) t.down--;
+    if (was === 1) { t.up--; drop(t.upBy); } else if (was === -1) { t.down--; drop(t.downBy); }
+    if (next === 1) { t.up++; t.upBy.push(me); } else if (next === -1) { t.down++; t.downBy.push(me); }
     t.myVote = next;
     paint(state);
   }
 
   try {
-    await store.vote(CODE, track.id, dir, was, played);
+    await store.vote(CODE, track.id, dir, was, myName);
   } catch (e) {
     toast(e.message || 'Vote did not save.', true);
   }
@@ -201,14 +220,20 @@ async function vote(track, dir) {
 
 /* ------------------------------------------------------------ render ---- */
 
-const queueEl = $('#queue'), qEmpty = $('#qEmpty');
+const queueEl = $('#queue'), playedEl = $('#played'), qEmpty = $('#qEmpty');
+const songs = n => n ? `${n} song${n === 1 ? '' : 's'}` : '';
 
 function paint(s) {
-  $('#qCount').textContent = s.upcoming || s.played
-    ? [s.upcoming && `${s.upcoming} song${s.upcoming === 1 ? '' : 's'}`, s.played && `${s.played} played`].filter(Boolean).join(' · ')
-    : '';
-  qEmpty.hidden = s.upcoming > 0;
-  renderQueue(queueEl, s.queue, { onVote: vote });
+  $('#qCount').textContent = songs(s.upNext.length);
+  qEmpty.hidden = s.upNext.length > 0;
+  $('#qEmptySub').textContent = s.played.length
+    ? 'The played ones are going round again until someone adds more.'
+    : 'Be the one who starts it.';
+  renderQueue(queueEl, s.upNext, { onVote: vote });
+
+  $('#playedWrap').hidden = !s.played.length;
+  $('#pCount').textContent = songs(s.played.length);
+  renderQueue(playedEl, s.played, { onVote: vote });
 
   const now = s.now;
   $('#nowWrap').hidden = !now;

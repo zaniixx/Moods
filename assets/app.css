@@ -390,11 +390,13 @@ body.focused .deck { opacity: .72; transition: opacity .5s var(--ease); }
   padding: 1px 5px; margin-right: 6px; vertical-align: 1px;
 }
 
+.meta .w { font-size: 11px; color: var(--mid); margin-top: 2px; }
+.meta .w[hidden] { display: none; }
+
+/* the played queue: grayed out, but votes still pick what comes back first */
+.row.played .meta, .row.played .art, .row.played .rank { opacity: .4; }
+
 /* enter / leave / reorder */
-/* already played: sits at the bottom until someone votes it back in */
-.row.played .meta, .row.played .art, .row.played .rank, .row.played .score { opacity: .38; }
-.row.played .rank { color: var(--dim); }
-.row.played .vote.down:disabled { opacity: .15; pointer-events: none; }
 
 .row.entering { animation: rowIn .5s var(--ease) both; }
 @keyframes rowIn {

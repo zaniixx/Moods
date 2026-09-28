@@ -5,7 +5,8 @@
    hostUid, and only they can move the needle. */
 
 import { FIREBASE, configured } from './config.js';
-import { roomCode, readRoom, nextVote, cleanName, findExisting, newTracksOnly, asPlayed, isExpired } from './lib.js';
+import { roomCode, readRoom, nextVote, cleanName, findExisting, newTracksOnly,
+         asPlayed, asPlaying, pickNext, isExpired } from './lib.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/12.4.0/';
 
@@ -92,19 +93,18 @@ export async function addTrack(code, meta, name) {
 
   // Re-adding something already queued is an upvote, not a duplicate.
   const dupe = findExisting(room, meta.ref);
-  if (dupe && dupe.track.played) {
-    await revive(code, dupe.track.id);
-    return { merged: true, message: 'Played earlier — back in the queue with your vote.' };
-  }
+  if (dupe && dupe.where === 'now') return { merged: true, message: "That's playing right now." };
   if (dupe) {
-    if (dupe.track.myVote === 1) {
-      return { merged: true, message: "That one's already in the queue." };
+    const t = dupe.track;
+    if (t.myVote === 1) {
+      return { merged: true, message: t.played
+        ? "Already played — and you've voted for it to come back."
+        : "That one's already in the queue." };
     }
-    const path = dupe.where === 'now'
-      ? `rooms/${code}/now/votes/${uid}`
-      : `rooms/${code}/queue/${dupe.track.id}/votes/${uid}`;
-    await fb.set(fb.ref(db, path), 1);
-    return { merged: true, message: 'Already queued — counted your vote.' };
+    await fb.set(fb.ref(db, `rooms/${code}/queue/${t.id}/votes/${uid}`), stamp(1, name));
+    return { merged: true, message: t.played
+      ? 'Already played — counted your vote for when it comes back round.'
+      : 'Already queued — counted your vote.' };
   }
 
   const track = makeTrack(code, meta, name, Date.now());
@@ -124,9 +124,12 @@ function makeTrack(code, meta, name, ts) {
     title: meta.title, artist: meta.artist || '', thumb: meta.thumb || '',
     addedBy: cleanName(name), addedByUid: uid,
     ts,
-    votes: { [uid]: 1 },          // you back your own pick
+    votes: { [uid]: stamp(1, name) },   // you back your own pick
   };
 }
+
+/** Every vote carries the name its caster gave when they joined. */
+const stamp = (v, name) => ({ v, name: cleanName(name) });
 
 /** Queue a whole playlist in one write, skipping anything already there. */
 export async function addTracks(code, metas, name) {
@@ -145,23 +148,24 @@ export async function addTracks(code, metas, name) {
   return { added: fresh.length, skipped: metas.length - fresh.length };
 }
 
-/** Back into contention: no longer played, starting from this one vote. */
-async function revive(code, trackId) {
-  await fb.update(fb.ref(db, `rooms/${code}/queue/${trackId}`),
-                  { playedAt: null, ['votes/' + uid]: 1 });
-}
-
-export async function vote(code, trackId, dir, current, played) {
+export async function vote(code, trackId, dir, current, name) {
   await start();
-  if (played) {
-    // Only an upvote brings a played song back; a downvote on one is moot.
-    if (dir > 0) await revive(code, trackId);
-    return;
-  }
   const want = nextVote(current, dir);
   const path = fb.ref(db, `rooms/${code}/queue/${trackId}/votes/${uid}`);
   if (want === null) await fb.remove(path);
-  else await fb.set(path, want);
+  else await fb.set(path, stamp(want, name));
+}
+
+/** After a rename, put the new name on every vote this browser has cast here. */
+export async function restamp(code, name) {
+  await start();
+  const snap = await fb.get(fb.ref(db, `rooms/${code}/queue`));
+  const patch = {};
+  snap.forEach(c => {
+    const mine = c.child('votes/' + uid).val();
+    if (mine && typeof mine === 'object') patch[`${c.key}/votes/${uid}/name`] = cleanName(name);
+  });
+  if (Object.keys(patch).length) await fb.update(fb.ref(db, `rooms/${code}/queue`), patch);
 }
 
 /* ---- host only: the rules reject these from anyone else ---------------- */
@@ -171,15 +175,19 @@ export async function playNext(code) {
   const snap = await fb.get(roomRef(code));
   if (!snap.exists()) return;
   const raw = snap.val();
-  const winnerId = readRoom(raw, uid).queue.find(t => !t.played)?.id;   // sorted by score, then age
-  // Write the stored record, not the decorated one: score/myVote/mine are
+  const pick = pickNext(readRoom(raw, uid));
+  const at = Date.now();
+
+  // Write stored records, not decorated ones: score/myVote/mine are
   // derived per viewer and have no business being saved.
-  const winner = winnerId ? raw.queue[winnerId] : null;
-  // One write, so no one ever sees the winner both on the deck and queued.
-  const patch = { now: winner || null, playing: true };
-  if (winnerId) patch['queue/' + winnerId] = null;
-  // What was playing drops to the bottom of the queue, grayed out.
-  if (raw.now && raw.now.id) patch['queue/' + raw.now.id] = asPlayed(raw.now, Date.now());
+  const fromQueue = pick && raw.queue && raw.queue[pick.id];
+  const patch = { playing: true, now: pick ? asPlaying(fromQueue || raw.now, at) : null };
+  // One write, so no one ever sees a song both on the deck and queued.
+  if (fromQueue) patch['queue/' + pick.id] = null;
+  // What was playing joins the played queue with its votes back at zero,
+  // unless it's the one going round again.
+  const was = raw.now && raw.now.id ? raw.now : null;
+  if (was && was.id !== (pick && pick.id)) patch['queue/' + was.id] = asPlayed(was, at);
   await fb.update(roomRef(code), patch);
 }
 

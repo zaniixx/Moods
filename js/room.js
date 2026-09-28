@@ -195,19 +195,34 @@ function showLinkCard(t) {
 
 /* ------------------------------------------------------------- driving -- */
 
+// Which play of which song is loaded. A song that goes round again keeps
+// its id but gets a fresh startedAt, so it still counts as a new load.
+const playKey = t => t.id + ':' + (t.startedAt || 0);
+
+let stuckUntil = 0;
+function next() {
+  return store.playNext(CODE).catch(e => {
+    // Most likely the database rules are older than this code. Say so,
+    // and don't hammer the database while it's refusing.
+    stuckUntil = Date.now() + 8000;
+    toast("Couldn't move to the next song: " + (e.message || e) +
+          '. Are the database rules from the README published?', true);
+  });
+}
+
 function advance() {
   if (!IS_HOST) return;
   if (advancedFrom === loadedId) return;   // one skip per track, no runaway
   advancedFrom = loadedId;
-  store.playNext(CODE).catch(() => {});
+  next();
 }
 
 let kickTimer = null;
 function kick() {
-  if (!IS_HOST || kickTimer) return;
+  if (!IS_HOST || kickTimer || Date.now() < stuckUntil) return;
   kickTimer = setTimeout(() => {
     kickTimer = null;
-    store.playNext(CODE).catch(() => {});
+    next();
   }, 400);
 }
 
@@ -272,7 +287,7 @@ function syncPlayer(now) {
   if (!now) {
     loadedId = null; loadedPlatform = null;
     setSpinning(false); setLabelArt(null); clearSpotify(); stopYouTube();
-    if (state && state.upcoming) kick();   // played songs don't count
+    if (state && state.queue.length) kick();
     return;
   }
 
@@ -282,14 +297,14 @@ function syncPlayer(now) {
   // the room but never starts a player, so two screens can't play over
   // each other. Spin state comes from whatever the host reported.
   if (!IS_HOST) {
-    loadedId = now.id;
+    loadedId = playKey(now);
     setSpinning(!!(state && state.playing));
     return;
   }
 
-  if (now.id === loadedId) return;
+  if (playKey(now) === loadedId) return;
 
-  loadedId = now.id;
+  loadedId = playKey(now);
   loadedPlatform = now.platform;
   advancedFrom = null;
   reportedPlaying = null;
@@ -313,7 +328,8 @@ function syncPlayer(now) {
 
 /* -------------------------------------------------------------- render -- */
 
-const queueEl = $('#queue'), qEmpty = $('#qEmpty');
+const queueEl = $('#queue'), playedEl = $('#played'), qEmpty = $('#qEmpty');
+const songs = n => n ? `${n} song${n === 1 ? '' : 's'}` : '';
 
 function render(s) {
   state = s;
@@ -323,12 +339,17 @@ function render(s) {
   $('#people').hidden = heads < 1;
   $('#peopleN').textContent = heads === 1 ? '1 here' : `${heads} here`;
 
-  $('#qCount').textContent = s.upcoming || s.played
-    ? [s.upcoming && `${s.upcoming} song${s.upcoming === 1 ? '' : 's'}`, s.played && `${s.played} played`].filter(Boolean).join(' · ')
-    : '';
-  qEmpty.hidden = s.upcoming > 0;
+  $('#qCount').textContent = songs(s.upNext.length);
+  qEmpty.hidden = s.upNext.length > 0;
+  $('#qEmptySub').textContent = s.played.length
+    ? 'Playing the played ones again until someone adds more.'
+    : 'Scan the code and put something on.';
 
-  renderQueue(queueEl, s.queue, IS_HOST ? { onRemove: removeTrack } : {});
+  const rowOpts = IS_HOST ? { onRemove: removeTrack } : {};
+  renderQueue(queueEl, s.upNext, rowOpts);
+  $('#playedWrap').hidden = !s.played.length;
+  $('#pCount').textContent = songs(s.played.length) + ' · back on when the queue runs dry';
+  renderQueue(playedEl, s.played, rowOpts);
 
   const now = s.now;
   $('#npTitle').textContent = now ? now.title : 'Nothing on the deck yet';
@@ -347,7 +368,7 @@ function removeTrack(id) {
 
 $('#skip').onclick = () => {
   advancedFrom = loadedId;
-  store.playNext(CODE).catch(e => toast(e.message, true));
+  next();
 };
 
 $('#playPause').onclick = () => {

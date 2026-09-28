@@ -26,6 +26,13 @@
     color: var(--mid); padding-left: .26em;
   }
 
+  header .me {
+    display: inline-block; line-height: 28px;
+    max-width: 38vw; height: 30px; padding: 0 11px; border-radius: 999px;
+    font-size: 12px; color: var(--mid); background: transparent;
+  }
+  .note { font-size: 11.5px; color: var(--dim); margin: -2px 0 6px; }
+
   /* now playing --------------------------------------------------------- */
   .now {
     display: flex; align-items: center; gap: 15px;
@@ -115,6 +122,7 @@
   <header>
     <a class="wordmark" href="./"><span class="dot"></span> Moods</a>
     <span class="spacer"></span>
+    <button class="me truncate" id="me" type="button" hidden title="Change your name"></button>
     <span class="code" id="code">····</span>
   </header>
 
@@ -136,10 +144,19 @@
 
   <div class="empty" id="qEmpty">
     <div class="big">Nothing queued</div>
-    <div>Be the one who starts it — or vote a played one back.</div>
+    <div id="qEmptySub">Be the one who starts it.</div>
   </div>
 
   <ul class="queue" id="queue"></ul>
+
+  <div id="playedWrap" hidden>
+    <div class="panelhead">
+      <span class="eyebrow">Played</span>
+      <span class="eyebrow" id="pCount"></span>
+    </div>
+    <p class="note">Back on, top first, once everything above has played. Votes start again from zero.</p>
+    <ul class="queue" id="played"></ul>
+  </div>
 </div>
 
 <div class="composer">
@@ -157,7 +174,7 @@
   <div class="inner">
     <div class="mini spinning"></div>
     <h2>Who's picking?</h2>
-    <p>So the room knows whose taste to blame.</p>
+    <p>Your name goes on every song you add and every vote you cast.</p>
     <form id="nameForm">
       <input type="text" id="name" maxlength="18" placeholder="your name"
              autocomplete="nickname" autocapitalize="words">

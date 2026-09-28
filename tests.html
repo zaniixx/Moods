@@ -82,7 +82,19 @@ group('scoring');
 const t = (votes, ts = 0, id = 'x') => ({ id, ts, votes, ref: id });
 eq('sums votes', L.score(t({ a: 1, b: 1, c: -1 })), 1);
 eq('no votes is zero', L.score(t({})), 0);
-eq('counts up and down separately', L.tally(t({ a: 1, b: 1, c: -1 })), { up: 2, down: 1 });
+eq('counts up and down separately', L.tally(t({ a: 1, b: 1, c: -1 })), { up: 2, down: 1, upBy: [], downBy: [] });
+
+group('votes carry names');
+const sv = (v, name) => ({ v, name });
+eq('stamped votes are counted', L.score(t({ a: sv(1, 'Al'), b: sv(1, 'Bo'), c: sv(-1, 'Cy') })), 1);
+eq('knows who voted which way', L.tally(t({ a: sv(1, 'Al'), b: sv(1, 'Bo'), c: sv(-1, 'Cy') })),
+   { up: 2, down: 1, upBy: ['Al', 'Bo'], downBy: ['Cy'] });
+eq('older unnamed votes still count', L.score(t({ a: 1, b: sv(1, 'Bo') })), 2);
+eq('names the voters', L.voterLine({ upBy: ['Al', 'Bo'], downBy: ['Cy'] }), '▲ Al, Bo   ▼ Cy');
+eq('no voters, no line', L.voterLine({ upBy: [], downBy: [] }), '');
+eq('my stamped vote is read back',
+   L.readRoom({ queue: { q: { id: 'q', ts: 1, votes: { me: sv(-1, 'Me') } } } }, 'me').queue[0].myVote, -1);
+eq('two people with the same name still count twice', L.score(t({ a: sv(1, 'Alex'), b: sv(1, 'Alex') })), 2);
 
 group('one vote per person');
 eq('a fresh upvote sticks', L.nextVote(0, 1), 1);
@@ -100,6 +112,15 @@ eq('buried tracks sink', L.sortQueue([A, D]).map(x => x.id), ['A', 'D']);
 const P1 = { id: 'P1', ts: 1, playedAt: 50, votes: {} }, P2 = { id: 'P2', ts: 2, playedAt: 40, votes: {} };
 eq('played songs sink below everything', L.sortQueue([P1, D, A]).map(x => x.id), ['A', 'D', 'P1']);
 eq('played songs keep the order they played in', L.sortQueue([P1, P2]).map(x => x.id), ['P2', 'P1']);
+const P3 = { id: 'P3', ts: 3, playedAt: 60, votes: { a: sv(1, 'Al') } };
+eq('votes reorder the played queue', L.sortQueue([P1, P2, P3]).map(x => x.id), ['P3', 'P2', 'P1']);
+const U = t({ a: -1, b: -1 }, 5, 'U');
+const Pv = { id: 'Pv', ts: 1, playedAt: 1, votes: { a: sv(1, 'x'), b: sv(1, 'y'), c: sv(1, 'z') } };
+eq('no amount of votes lifts a played song above an unplayed one', L.sortQueue([Pv, U]).map(x => x.id), ['U', 'Pv']);
+eq('going on the deck spends the votes',
+   L.asPlaying({ id: 'x', votes: { a: 1 }, playedAt: 5 }, 7), { id: 'x', startedAt: 7 });
+eq('going to the played queue drops the deck stamp',
+   L.asPlayed({ id: 'x', startedAt: 7, votes: {} }, 9), { id: 'x', playedAt: 9 });
 eq('a played song loses its votes and gets a stamp',
    L.asPlayed({ id: 'x', title: 't', votes: { a: 1 } }, 99), { id: 'x', title: 't', playedAt: 99 });
 eq('sorting does not mutate the input', [A, B, C].map(x => x.id), ['A', 'B', 'C']);
@@ -123,7 +144,18 @@ eq('knows which are mine', r.queue.map(x => x.mine), [true, false]);
 eq('now playing is decorated', r.now.score, 1);
 eq('counts listeners', r.listeners, 3);
 const rp = L.readRoom({ queue: { a: { id: 'a', ts: 1, votes: {} }, b: { id: 'b', ts: 2, playedAt: 5 } } }, 'me');
-eq('counts upcoming and played apart', [rp.upcoming, rp.played], [1, 1]);
+eq('splits up next from played', [rp.upNext.map(x => x.id), rp.played.map(x => x.id)], [['a'], ['b']]);
+
+group('what plays next');
+const rn = L.readRoom({ now: { id: 'n', ts: 0 }, queue: {
+  u: { id: 'u', ts: 5, votes: {} },
+  p: { id: 'p', ts: 1, playedAt: 3, votes: { a: sv(1, 'A'), b: sv(1, 'B') } } } }, 'me');
+eq('an unplayed song goes on before any played one', L.pickNext(rn).id, 'u');
+const rq = L.readRoom({ now: { id: 'n', ts: 0 }, queue: {
+  p1: { id: 'p1', ts: 1, playedAt: 3 }, p2: { id: 'p2', ts: 2, playedAt: 2 } } }, 'me');
+eq('with nothing unplayed, the played queue goes round from the top', L.pickNext(rq).id, 'p2');
+eq('a lone song repeats', L.pickNext(L.readRoom({ now: { id: 'n', ts: 0 } }, 'me')).id, 'n');
+eq('an empty room has nothing to play', L.pickNext(L.readRoom({}, 'me')), null);
 eq('played songs are flagged', rp.queue.map(x => x.played), [false, true]);
 eq('an empty room is safe to read', L.readRoom(null, 'me').queue, []);
 eq('a room with no queue is safe', L.readRoom({ code: 'X' }, 'me').queue, []);

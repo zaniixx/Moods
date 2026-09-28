@@ -108,6 +108,7 @@
     padding-bottom: 9px; border-bottom: 1px solid var(--ink-3);
   }
   .queue { max-height: min(46vh, 520px); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+  .queue.playedq { max-height: min(24vh, 260px); }
   .queue::-webkit-scrollbar { width: 5px; }
   .queue::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
@@ -242,9 +243,17 @@
       </div>
       <div class="empty" id="qEmpty">
         <div class="big">Queue's empty</div>
-        <div>Scan the code and put something on.</div>
+        <div id="qEmptySub">Scan the code and put something on.</div>
       </div>
       <ul class="queue" id="queue"></ul>
+
+      <div id="playedWrap" hidden>
+        <div class="panelhead">
+          <span class="eyebrow">Played</span>
+          <span class="eyebrow" id="pCount"></span>
+        </div>
+        <ul class="queue playedq" id="played"></ul>
+      </div>
 
       <div class="qrcard" id="qrcard" role="button" tabindex="0" title="Tap to enlarge">
         <div class="qr" id="qrSmall"></div>

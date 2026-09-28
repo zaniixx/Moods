@@ -74,21 +74,12 @@ access. Access is decided by the rules below.
         "playing":   { ".validate": "newData.isBoolean()" },
         "createdAt": { ".validate": "newData.isNumber()" },
 
-        "now": {
-          "votes": {
-            "$uid": {
-              ".write": "auth != null && $uid === auth.uid",
-              ".validate": "newData.val() === 1 || newData.val() === -1"
-            }
-          }
-        },
-
         "queue": {
           "$track": {
             ".write": "auth != null && ((!data.exists() && newData.exists()) || (data.exists() && !newData.exists() && root.child('rooms').child($code).child('hostUid').val() === auth.uid))",
             ".validate": "newData.hasChildren(['title','platform','ref','addedByUid','ts'])",
 
-            "addedByUid": { ".validate": "newData.val() === auth.uid" },
+            "addedByUid": { ".validate": "newData.val() === auth.uid || root.child('rooms').child($code).child('hostUid').val() === auth.uid" },
             "addedBy":    { ".validate": "newData.isString() && newData.val().length <= 18" },
             "title":      { ".validate": "newData.isString() && newData.val().length <= 200" },
             "artist":     { ".validate": "newData.isString() && newData.val().length <= 200" },
@@ -98,12 +89,15 @@ access. Access is decided by the rules below.
             "platform":   { ".validate": "newData.val() === 'youtube' || newData.val() === 'spotify' || newData.val() === 'soundcloud' || newData.val() === 'link'" },
             "ts":         { ".validate": "newData.isNumber()" },
             "id":         { ".validate": "newData.val() === $track" },
-            "playedAt":   { ".write": "auth != null && !newData.exists()", ".validate": "newData.isNumber()" },
+            "playedAt":   { ".validate": "newData.isNumber() && root.child('rooms').child($code).child('hostUid').val() === auth.uid" },
 
             "votes": {
               "$uid": {
                 ".write": "auth != null && $uid === auth.uid",
-                ".validate": "newData.val() === 1 || newData.val() === -1"
+                ".validate": "$uid === auth.uid && newData.hasChildren(['v','name'])",
+                "v":      { ".validate": "newData.val() === 1 || newData.val() === -1" },
+                "name":   { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 18" },
+                "$other": { ".validate": false }
               }
             },
             "$other": { ".validate": false }
@@ -127,13 +121,15 @@ What these actually enforce:
 - **Only the room's creator can skip, remove or close it.** `hostUid` is written
   once at creation and can only ever be set to your own uid, so nobody can
   rewrite themselves into the host seat.
-- **A vote can only be cast under your own uid**, and can only be `1` or `-1`.
+- **A vote belongs to whoever cast it.** It lives under your own uid, only you
+  can change or withdraw it, and nobody can slip votes from anyone else into a
+  song they add. Each vote is `{ v: 1 or -1, name }`, stamped with the name you
+  gave when you opened the link.
 - **A queued track can be created but never edited** — only the host can delete
   one. Without that, whoever added a song could rewrite its `votes` afterwards
   and quietly boost themselves.
-- **Played songs stay in the queue, grayed out.** Only the host marks a song
-  played (when it leaves the deck, votes wiped); anyone may clear that mark,
-  which is what upvoting a played song does to bring it back.
+- **Only the host moves songs into the played queue.** `playedAt` can't be
+  written by anyone else, so a guest can't bury a song or fake a played one.
 - **Fields are shape- and length-checked**, and `$other` rejects anything not
   listed, so the room can't be used as free storage for someone else's data.
 
@@ -180,6 +176,24 @@ search results page doesn't send CORS headers, unlike their oEmbed endpoint.
 
 Re-adding a song that's already queued doesn't duplicate it — it counts as an
 upvote for the one that's there.
+
+## Voting and the played queue
+
+- **Everyone gives a name when they open the room link.** It's remembered, so
+  it's one tap, and it's stamped on every vote they cast. Each row shows who
+  voted which way (`▲ Alice, Bob   ▼ Dan`). Tap your name at the top to change it;
+  your votes in that room pick up the new name.
+- **Votes are per browser, not per name.** Two people who both type "Alex" still
+  have separate votes, and nobody can change anyone else's.
+- **Up next** plays highest score first, ties going to whoever asked first.
+- **When a song finishes it moves to the played queue**, grayed out, with its
+  votes reset to zero.
+- **Played songs only come back once everything up next has played.** Then the
+  played queue goes round again, top first. Voting there decides which comes
+  back first. Otherwise it's whichever played longest ago. A room with one song
+  just repeats it.
+- Re-adding a played song counts as your vote for it in the played queue. It
+  doesn't jump ahead of songs that haven't played yet.
 
 **About Spotify:** their embed only plays a 30-second preview unless the browser
 running the room is signed in to Spotify Premium. For full tracks with no fuss,
