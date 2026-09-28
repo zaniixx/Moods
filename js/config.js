@@ -18,7 +18,9 @@ export const FIREBASE = {
 /* Optional. Without it people paste links, which is the main path anyway.
    With it they can also just type a song name.
    Enable "YouTube Data API v3" on the same Google Cloud project, make an API
-   key, and restrict it to your GitHub Pages domain. */
+   key, and restrict it to your GitHub Pages domain.
+   Leave this empty in git: the Pages workflow fills it in from the
+   YOUTUBE_API_KEY repo secret at deploy time. */
 export const YOUTUBE_API_KEY = "";
 
 export const configured = () => !!(FIREBASE.apiKey && FIREBASE.databaseURL);

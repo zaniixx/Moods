@@ -22,7 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # No build step - the repo is the site.
+      # No build step - the repo is the site. The only change is filling in
+      # the YouTube key from the repo secret, so it never lives in git.
+      - name: Inject YouTube API key
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: sed -i "s|^export const YOUTUBE_API_KEY = \"\";|export const YOUTUBE_API_KEY = \"$YOUTUBE_API_KEY\";|" js/config.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
