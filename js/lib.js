@@ -13,6 +13,10 @@ export function roomCode(rand = Math.random) {
 export const YT_RE = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
 export const SPOTIFY_RE = /(?:open\.spotify\.com\/(?:intl-[a-z-]+\/)?track\/|spotify:track:)([A-Za-z0-9]{22})/;
 export const SC_RE = /^https?:\/\/(?:www\.|m\.)?soundcloud\.com\/[\w-]+\/[\w-]+/;
+// Only a bare playlist link counts. A watch?v=...&list=... link is someone
+// sharing one song they happened to hear inside a playlist.
+export const YT_LIST_RE = /youtube\.com\/playlist\?(?:.*&)?list=([A-Za-z0-9_-]+)/;
+export const SPOTIFY_LIST_RE = /open\.spotify\.com\/(?:intl-[a-z-]+\/)?(?:playlist|album)\/([A-Za-z0-9]{22})/;
 
 /** What did someone just paste or type? */
 export function parseInput(raw) {
@@ -20,7 +24,14 @@ export function parseInput(raw) {
   if (!s) return { kind: 'empty' };
   if (s.length > 600) return { kind: 'toolong' };
 
-  let m = s.match(YT_RE);
+  let m = s.match(YT_LIST_RE);
+  if (m) return { kind: 'playlist', platform: 'youtube', ref: m[1],
+                  url: 'https://www.youtube.com/playlist?list=' + m[1] };
+
+  m = s.match(SPOTIFY_LIST_RE);
+  if (m) return { kind: 'playlist', platform: 'spotify', ref: m[1], url: s };
+
+  m = s.match(YT_RE);
   if (m) return { kind: 'track', platform: 'youtube', ref: m[1],
                   url: 'https://www.youtube.com/watch?v=' + m[1] };
 
@@ -108,6 +119,16 @@ export function findExisting(room, ref) {
   if (room.now && room.now.ref === ref) return { where: 'now', track: room.now };
   const hit = (room.queue || []).find(t => t.ref === ref);
   return hit ? { where: 'queue', track: hit } : null;
+}
+
+/** The part of a playlist that isn't queued yet, each song once. */
+export function newTracksOnly(room, metas) {
+  const seen = new Set();
+  return metas.filter(m => {
+    if (seen.has(m.ref) || findExisting(room, m.ref)) return false;
+    seen.add(m.ref);
+    return true;
+  });
 }
 
 export const ROOM_TTL_MS = 12 * 3600 * 1000;

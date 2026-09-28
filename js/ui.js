@@ -179,13 +179,21 @@ export function renderQueue(ul, tracks, opts = {}) {
     frag.appendChild(li);
   });
 
-  existing.forEach(li => {
+  // Departing rows fade out where they stood. Taking them out of the flow
+  // lets the rest close the gap; otherwise the one that just went to the
+  // deck would appear to drop to the bottom of the queue on its way out.
+  if (existing.size && getComputedStyle(ul).position === 'static') ul.style.position = 'relative';
+  const pinned = [];
+  existing.forEach(li => pinned.push([li, li.offsetTop, li.offsetWidth]));
+  pinned.forEach(([li, top, width]) => {
+    li.style.position = 'absolute';
+    li.style.top = top + 'px';
+    li.style.width = width + 'px';
     li.classList.add('leaving');
     li.removeAttribute('data-id');
     setTimeout(() => li.remove(), 360);
   });
 
-  // kept rows first, departing rows trail behind while they fade
   ul.insertBefore(frag, ul.firstChild);
 
   requestAnimationFrame(() => {

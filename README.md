@@ -154,6 +154,10 @@ Pasting links needs nothing extra. If you also want people to type
 2. Create an API key and restrict it to your Pages domain.
 3. Put it in `js/config.js` as `YOUTUBE_API_KEY`.
 
+Suggestions while typing come from the free iTunes Search API, which needs no
+key and costs no quota. Only the song someone picks runs a YouTube search
+(100 of the 10,000 free daily units). Reading a playlist costs 1 unit per 50 songs.
+
 Without a key the composer just says "paste a link" and everything else works.
 This is the one thing that can't be done from the browser alone — YouTube's
 search results page doesn't send CORS headers, unlike their oEmbed endpoint.
@@ -166,7 +170,9 @@ search results page doesn't send CORS headers, unlike their oEmbed endpoint.
 | A Spotify track link | Plays through Spotify's embed — see below |
 | A SoundCloud track link | Queued with title and artwork |
 | Any other link | Queued under its hostname; open it and hit skip when it's done |
-| Plain text, e.g. `weird fishes radiohead` | Needs the optional YouTube key above |
+| Plain text, e.g. `weird fishes radiohead` | Suggestions appear as you type; tap one, or hit enter for the top YouTube match. Needs the optional YouTube key above |
+| A YouTube playlist link (`youtube.com/playlist?list=…`) | Asks, then queues up to its first 50 songs, skipping ones already there. Needs the key |
+| A Spotify playlist or album | Refused with a note — Spotify won't list a playlist without a login |
 
 Re-adding a song that's already queued doesn't duplicate it — it counts as an
 upvote for the one that's there.

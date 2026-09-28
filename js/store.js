@@ -5,7 +5,7 @@
    hostUid, and only they can move the needle. */
 
 import { FIREBASE, configured } from './config.js';
-import { roomCode, readRoom, nextVote, cleanName, findExisting, isExpired } from './lib.js';
+import { roomCode, readRoom, nextVote, cleanName, findExisting, newTracksOnly, isExpired } from './lib.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/12.4.0/';
 
@@ -103,22 +103,42 @@ export async function addTrack(code, meta, name) {
     return { merged: true, message: 'Already queued — counted your vote.' };
   }
 
-  const id = fb.push(fb.ref(db, `rooms/${code}/queue`)).key;
-  const track = {
-    id,
-    url: meta.url, platform: meta.platform, ref: meta.ref,
-    title: meta.title, artist: meta.artist || '', thumb: meta.thumb || '',
-    addedBy: cleanName(name), addedByUid: uid,
-    ts: Date.now(),
-    votes: { [uid]: 1 },          // you back your own pick
-  };
+  const track = makeTrack(code, meta, name, Date.now());
 
   // Always append, never write `now` directly. Only the host may touch the
   // room node, and the first person to queue anything is usually a guest -
   // writing straight to the platter would be refused by the rules. The host
   // screen promotes it off an empty deck within a beat (see kick() there).
-  await fb.set(fb.ref(db, `rooms/${code}/queue/${id}`), track);
+  await fb.set(fb.ref(db, `rooms/${code}/queue/${track.id}`), track);
   return { track };
+}
+
+function makeTrack(code, meta, name, ts) {
+  return {
+    id: fb.push(fb.ref(db, `rooms/${code}/queue`)).key,
+    url: meta.url, platform: meta.platform, ref: meta.ref,
+    title: meta.title, artist: meta.artist || '', thumb: meta.thumb || '',
+    addedBy: cleanName(name), addedByUid: uid,
+    ts,
+    votes: { [uid]: 1 },          // you back your own pick
+  };
+}
+
+/** Queue a whole playlist in one write, skipping anything already there. */
+export async function addTracks(code, metas, name) {
+  await start();
+  const snap = await fb.get(roomRef(code));
+  if (!snap.exists()) throw new Error('That room has closed.');
+  const fresh = newTracksOnly(readRoom(snap.val(), uid), metas);
+
+  // One ms apart keeps the playlist's order among equal scores.
+  const t0 = Date.now(), batch = {};
+  fresh.forEach((m, i) => {
+    const t = makeTrack(code, m, name, t0 + i);
+    batch[t.id] = t;
+  });
+  if (fresh.length) await fb.update(fb.ref(db, `rooms/${code}/queue`), batch);
+  return { added: fresh.length, skipped: metas.length - fresh.length };
 }
 
 export async function vote(code, trackId, dir, current) {
@@ -140,8 +160,10 @@ export async function playNext(code) {
   // Write the stored record, not the decorated one: score/myVote/mine are
   // derived per viewer and have no business being saved.
   const winner = winnerId ? raw.queue[winnerId] : null;
-  await fb.update(roomRef(code), { now: winner || null, playing: true });
-  if (winnerId) await fb.remove(fb.ref(db, `rooms/${code}/queue/${winnerId}`));
+  // One write, so no one ever sees the winner both on the deck and queued.
+  const patch = { now: winner || null, playing: true };
+  if (winnerId) patch['queue/' + winnerId] = null;
+  await fb.update(roomRef(code), patch);
 }
 
 export async function removeTrack(code, id) {

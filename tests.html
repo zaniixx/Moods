@@ -62,6 +62,12 @@ eq('soundcloud', L.parseInput('https://soundcloud.com/artist/some-track').platfo
 eq('any other link', L.parseInput('https://example.com/song.mp3').platform, 'link');
 eq('plain text is a search', L.parseInput('weird fishes radiohead').kind, 'search');
 eq('empty input', L.parseInput('   ').kind, 'empty');
+eq('youtube playlist', L.parseInput('https://www.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG').kind, 'playlist');
+eq('youtube music playlist', L.parseInput('https://music.youtube.com/playlist?list=OLAK5uy_abc&si=x').ref, 'OLAK5uy_abc');
+eq('a song shared from a playlist is still one song',
+   L.parseInput('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLabc').kind, 'track');
+eq('spotify playlist is spotted', L.parseInput('https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M').platform, 'spotify');
+eq('spotify album counts too', L.parseInput('https://open.spotify.com/album/4cOdK2wGLETKBW3PvgPWqT').kind, 'playlist');
 eq('absurdly long input', L.parseInput('a'.repeat(700)).kind, 'toolong');
 
 group('titles');
@@ -118,6 +124,8 @@ group('no duplicates');
 eq('spots one already queued', L.findExisting(r, 'r2').track.id, 'q2');
 eq('spots the one on the deck', L.findExisting(r, 'n').where, 'now');
 eq('lets a new one through', L.findExisting(r, 'nope'), null);
+eq('a playlist skips what is queued and its own repeats',
+   L.newTracksOnly(r, [{ ref: 'r2' }, { ref: 'a' }, { ref: 'n' }, { ref: 'a' }, { ref: 'b' }]).map(x => x.ref), ['a', 'b']);
 
 group('rooms expire');
 ok('a fresh room is live', !L.isExpired({ createdAt: Date.now() }));

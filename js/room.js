@@ -332,7 +332,7 @@ function render(s) {
   const now = s.now;
   $('#npTitle').textContent = now ? now.title : 'Nothing on the deck yet';
   $('#npArtist').textContent = now ? (now.artist || '') : '';
-  $('#npCredit').textContent = now ? `added by ${now.added_by}` : '';
+  $('#npCredit').textContent = now ? `added by ${now.addedBy}` : '';
   $('#transport').style.visibility = now && IS_HOST ? 'visible' : 'hidden';
 
   syncPlayer(now);

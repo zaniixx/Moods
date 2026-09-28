@@ -67,7 +67,7 @@ function bareLink(url) {
 }
 
 /** Typing a song name needs the YouTube Data API - the results page blocks CORS. */
-async function search(text) {
+export async function searchYouTube(text) {
   if (!YOUTUBE_API_KEY) {
     throw new Error('Paste a link — typing a song name needs a YouTube API key.');
   }
@@ -87,12 +87,79 @@ async function search(text) {
 
 export const searchAvailable = () => !!YOUTUBE_API_KEY;
 
+/* Suggestions come from the iTunes catalogue: no key, no quota, and it sends
+   CORS headers. Each YouTube search costs 1% of the daily quota, so it only
+   runs once someone actually picks a song. */
+const suggestCache = new Map();
+
+export async function suggest(text) {
+  const q = text.trim().toLowerCase();
+  if (suggestCache.has(q)) return suggestCache.get(q);
+  const d = await getJSON('https://itunes.apple.com/search?media=music&entity=song&limit=6&term=' + enc(q));
+  const list = (d.results || []).map(r => ({
+    title: r.trackName || '',
+    artist: r.artistName || '',
+    // 100px art is the default; the same URL serves any size
+    thumb: (r.artworkUrl100 || '').replace('100x100bb', '300x300bb'),
+  })).filter(r => r.title);
+  suggestCache.set(q, list);
+  return list;
+}
+
+/** A picked suggestion: play the YouTube match, keep the catalogue's clean names. */
+export async function resolvePick(s) {
+  const yt = await searchYouTube(`${s.artist} ${s.title}`);
+  return { ...yt, title: s.title, artist: s.artist, thumb: s.thumb || yt.thumb };
+}
+
+export const MAX_PLAYLIST = 50;
+
+/** Every playable song in a YouTube playlist, up to MAX_PLAYLIST. */
+export async function resolvePlaylist(raw) {
+  const p = parseInput(raw);
+  if (p.kind !== 'playlist') throw new Error("That isn't a playlist link.");
+  if (p.platform === 'spotify') {
+    throw new Error("Spotify playlists need a Spotify login. Try a YouTube playlist.");
+  }
+  if (!YOUTUBE_API_KEY) throw new Error('Playlists need a YouTube API key.');
+
+  const u = 'https://www.googleapis.com/youtube/v3/playlistItems'
+          + '?part=snippet&maxResults=' + MAX_PLAYLIST
+          + '&playlistId=' + enc(p.ref) + '&key=' + enc(YOUTUBE_API_KEY);
+  let d;
+  try {
+    d = await getJSON(u);
+  } catch {
+    // Mixes (RD...) and private playlists come back 404 as well
+    throw new Error("Couldn't open that playlist. Is it public?");
+  }
+
+  const tracks = [];
+  for (const it of d.items || []) {
+    const sn = it.snippet || {};
+    const id = sn.resourceId && sn.resourceId.videoId;
+    if (!id || sn.title === 'Private video' || sn.title === 'Deleted video') continue;
+    let [title, artist] = splitTitle(sn.title || id, '');
+    const chan = (sn.videoOwnerChannelTitle || '').trim();
+    if (chan.endsWith(' - Topic')) artist = chan.slice(0, -8).trim();
+    else if (!artist) artist = chan;
+    const th = sn.thumbnails || {};
+    const thumb = (th.high || th.medium || th.default || {}).url
+               || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+    tracks.push({ platform: 'youtube', ref: id,
+                  url: 'https://www.youtube.com/watch?v=' + id, title, artist, thumb });
+  }
+  if (!tracks.length) throw new Error('That playlist has nothing playable in it.');
+  return tracks;
+}
+
 export async function resolve(raw) {
   const p = parseInput(raw);
   switch (p.kind) {
     case 'empty':   throw new Error('Give me a link or a song name.');
     case 'toolong': throw new Error("That's too long to be a link.");
-    case 'search':  return search(p.text);
+    case 'search':  return searchYouTube(p.text);
+    case 'playlist': throw new Error('That is a playlist link.');
     case 'track':
       if (p.platform === 'youtube')    return youtube(p.ref);
       if (p.platform === 'spotify')    return spotify(p.ref);
