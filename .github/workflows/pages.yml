@@ -27,7 +27,12 @@ jobs:
       - name: Inject YouTube API key
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        run: sed -i "s|^export const YOUTUBE_API_KEY = \"\";|export const YOUTUBE_API_KEY = \"$YOUTUBE_API_KEY\";|" js/config.js
+        run: |
+          if [ -z "$YOUTUBE_API_KEY" ]; then
+            echo "::error::YOUTUBE_API_KEY secret is empty or missing (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
+          sed -i "s|^export const YOUTUBE_API_KEY = \"\";|export const YOUTUBE_API_KEY = \"$YOUTUBE_API_KEY\";|" js/config.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
